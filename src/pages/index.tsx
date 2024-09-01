@@ -3,12 +3,17 @@ import type { NextPage } from 'next';
 import Head from 'next/head';
 import styles from '../styles/Home.module.css';
 import { useAccount } from 'wagmi';
+import {
+  waitForTransactionReceipt,
+} from '@wagmi/core';
+import { config } from '../wagmi';
 import { EvmChains, IndexService, SignProtocolClient, SpMode } from '@ethsign/sp-sdk';
 import { useEffect, useState } from 'react';
 
 const signAddressBase = "0x2b3224D080452276a76690341e5Cfa81A945a985";
 const schemaIdBase = "0x31";
 const fullSchemaIdBase = "onchain_evm_8453_0x31";
+const chainId = 8453;
 
 
 const Home: NextPage = () => {
@@ -16,6 +21,7 @@ const Home: NextPage = () => {
 
   const [client, setClient] = useState<SignProtocolClient | null>(null);
   const [isSybil, setIsSybil] = useState(false);
+  const [attestationId, setAttestationId] = useState("0x");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -29,30 +35,34 @@ const Home: NextPage = () => {
     }
   }, []);
 
+  const fetchAttestations = async() => {
+    console.log('fetching attestations');
+    const indexService = new IndexService("mainnet");
+    const res = await indexService.queryAttestationList({
+      schemaId: fullSchemaIdBase,
+      attester: address,
+      indexingValue: "sybilreports",
+      mode: "onchain",
+      page: 1
+    });
+    console.log(res?.rows);
+
+    let sybil = false;
+    res?.rows.forEach(element => {
+      if (!element.revoked) {
+        if (element.data == "0x0000000000000000000000000000000000000000000000000000000000000001") {
+          sybil = true;
+          setAttestationId(element.attestationId);
+        }
+      }
+    });
+
+    setIsSybil(sybil);
+  }
+
   useEffect(() => {
     if (!address) return;
 
-    const fetchAttestations = async() => {
-      const indexService = new IndexService("mainnet");
-      const res = await indexService.queryAttestationList({
-        schemaId: fullSchemaIdBase,
-        attester: address,
-        indexingValue: "sybilreports",
-        mode: "onchain",
-        page: 1
-      });
-
-      let sybil = false;
-      res?.rows.forEach(element => {
-        if (!element.revoked) {
-          if (element.data == "0x0000000000000000000000000000000000000000000000000000000000000001") {
-            sybil = true;
-          }
-        }
-      });
-
-      setIsSybil(sybil);
-    }
     fetchAttestations();
   }, [address]);
 
@@ -68,6 +78,14 @@ const Home: NextPage = () => {
         data: { i_am_a_sybil: true },
         indexingValue: "sybilreports",
       });
+      console.log(createAttestationRes);
+      await waitForTransactionReceipt(config, {
+        chainId: chainId,
+        hash: createAttestationRes.txHash as `0x${string}`,
+      });
+      console.log('finished waiting for tx');
+      setIsSybil(true);
+
     } catch (error) {
       console.error('Error self-reporting:', error);
     } finally {
@@ -80,34 +98,22 @@ const Home: NextPage = () => {
       console.log('client is null');
       return;
     }
-    try {
-
-      // console.log('revoke button clicked');
-      const createAttestationRes = await client.revokeAttestation(
-        "0x48c4",
-      );
-    } catch (error) {
-      console.error('Error self-reporting:', error);
-    } finally {
-
-    }
-  }
-
-  const checkSelfReports = async() => {
-    if (client == null) {
-      console.log('client is null');
+    if (attestationId == "0x") {
+      console.log('nothing to revoke');
       return;
     }
     try {
-      const indexService = new IndexService("mainnet");
-      const res = await indexService.queryAttestationList({
-        schemaId: fullSchemaIdBase,
-        attester: address,
-        indexingValue: "sybilreports",
-        mode: "onchain",
-        page: 1
+      console.log('revoke button clicked');
+      const revokeAttestationRes = await client.revokeAttestation(
+        attestationId,
+      );
+      console.log(revokeAttestationRes);
+      await waitForTransactionReceipt(config, {
+        chainId: chainId,
+        hash: revokeAttestationRes.txHash as `0x${string}`,
       });
-      console.log(res);
+      setIsSybil(false);
+
     } catch (error) {
       console.error('Error self-reporting:', error);
     } finally {
@@ -128,31 +134,16 @@ const Home: NextPage = () => {
 
       <main className={styles.main}>
         <ConnectButton />
-        <button onClick={handleSelfReport} className={styles.modalButton} disabled={isSybil}>
-          Self-report
-        </button>
-        <button onClick={handleRevokeSelfReport} className={styles.modalButton}>
-          Revoke self-report
-        </button>
-        <button onClick={checkSelfReports} className={styles.modalButton}>
-          Check self-reports
-        </button>
-
         <h1 className={styles.title}>
           Use this to self-report as a Sybil
         </h1>
-
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.tsx</code>
-        </p>
-
-        <div className={styles.grid}>
-          <a className={styles.card} href="https://rainbowkit.com">
-            <h2>RainbowKit Documentation &rarr;</h2>
-            <p>Learn how to customize your wallet connection flow.</p>
-          </a>
-        </div>
+        <h2>{isSybil ? 'YOU ARE SYBIL ⛔️' : 'You are not a sybil 🤗'}</h2>
+        <button onClick={handleSelfReport} className={styles.modalButton} disabled={isSybil}>
+          Self-report
+        </button>
+        <button onClick={handleRevokeSelfReport} className={styles.modalButton} disabled={!isSybil}>
+          Revoke self-report
+        </button>
       </main>
     </div>
   );
