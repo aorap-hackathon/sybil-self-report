@@ -2,10 +2,119 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import styles from '../styles/Home.module.css';
+import { useAccount } from 'wagmi';
+import { EvmChains, IndexService, SignProtocolClient, SpMode } from '@ethsign/sp-sdk';
+import { useEffect, useState } from 'react';
 
-const ethSignBaseAddress = "0x2b3224D080452276a76690341e5Cfa81A945a985";
+const signAddressBase = "0x2b3224D080452276a76690341e5Cfa81A945a985";
+const schemaIdBase = "0x31";
+const fullSchemaIdBase = "onchain_evm_8453_0x31";
+
 
 const Home: NextPage = () => {
+  const { address } = useAccount();
+
+  const [client, setClient] = useState<SignProtocolClient | null>(null);
+  const [isSybil, setIsSybil] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      console.log("ALL GOOD!")
+      // This code runs only on the client-side
+      const spClient = new SignProtocolClient(SpMode.OnChain, {
+        chain: EvmChains.base,
+      });
+      setClient(spClient);
+      
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!address) return;
+
+    const fetchAttestations = async() => {
+      const indexService = new IndexService("mainnet");
+      const res = await indexService.queryAttestationList({
+        schemaId: fullSchemaIdBase,
+        attester: address,
+        indexingValue: "sybilreports",
+        mode: "onchain",
+        page: 1
+      });
+
+      let sybil = false;
+      res?.rows.forEach(element => {
+        if (!element.revoked) {
+          if (element.data == "0x0000000000000000000000000000000000000000000000000000000000000001") {
+            sybil = true;
+          }
+        }
+      });
+
+      setIsSybil(sybil);
+    }
+    fetchAttestations();
+  }, [address]);
+
+  const handleSelfReport = async() => {
+    if (client == null) {
+      console.log('client is null');
+      return;
+    }
+    try {
+      console.log('add button clicked');
+      const createAttestationRes = await client.createAttestation({
+        schemaId: schemaIdBase,
+        data: { i_am_a_sybil: true },
+        indexingValue: "sybilreports",
+      });
+    } catch (error) {
+      console.error('Error self-reporting:', error);
+    } finally {
+
+    }
+  }
+
+  const handleRevokeSelfReport = async() => {
+    if (client == null) {
+      console.log('client is null');
+      return;
+    }
+    try {
+
+      // console.log('revoke button clicked');
+      const createAttestationRes = await client.revokeAttestation(
+        "0x48c4",
+      );
+    } catch (error) {
+      console.error('Error self-reporting:', error);
+    } finally {
+
+    }
+  }
+
+  const checkSelfReports = async() => {
+    if (client == null) {
+      console.log('client is null');
+      return;
+    }
+    try {
+      const indexService = new IndexService("mainnet");
+      const res = await indexService.queryAttestationList({
+        schemaId: fullSchemaIdBase,
+        attester: address,
+        indexingValue: "sybilreports",
+        mode: "onchain",
+        page: 1
+      });
+      console.log(res);
+    } catch (error) {
+      console.error('Error self-reporting:', error);
+    } finally {
+
+    }
+  }
+
   return (
     <div className={styles.container}>
       <Head>
@@ -19,10 +128,18 @@ const Home: NextPage = () => {
 
       <main className={styles.main}>
         <ConnectButton />
+        <button onClick={handleSelfReport} className={styles.modalButton} disabled={isSybil}>
+          Self-report
+        </button>
+        <button onClick={handleRevokeSelfReport} className={styles.modalButton}>
+          Revoke self-report
+        </button>
+        <button onClick={checkSelfReports} className={styles.modalButton}>
+          Check self-reports
+        </button>
 
         <h1 className={styles.title}>
-          Welcome to <a href="">RainbowKit</a> + <a href="">wagmi</a> +{' '}
-          <a href="https://nextjs.org">Next.js!</a>
+          Use this to self-report as a Sybil
         </h1>
 
         <p className={styles.description}>
@@ -35,50 +152,8 @@ const Home: NextPage = () => {
             <h2>RainbowKit Documentation &rarr;</h2>
             <p>Learn how to customize your wallet connection flow.</p>
           </a>
-
-          <a className={styles.card} href="https://wagmi.sh">
-            <h2>wagmi Documentation &rarr;</h2>
-            <p>Learn how to interact with Ethereum.</p>
-          </a>
-
-          <a
-            className={styles.card}
-            href="https://github.com/rainbow-me/rainbowkit/tree/main/examples"
-          >
-            <h2>RainbowKit Examples &rarr;</h2>
-            <p>Discover boilerplate example RainbowKit projects.</p>
-          </a>
-
-          <a className={styles.card} href="https://nextjs.org/docs">
-            <h2>Next.js Documentation &rarr;</h2>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
-
-          <a
-            className={styles.card}
-            href="https://github.com/vercel/next.js/tree/canary/examples"
-          >
-            <h2>Next.js Examples &rarr;</h2>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
-
-          <a
-            className={styles.card}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          >
-            <h2>Deploy &rarr;</h2>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
         </div>
       </main>
-
-      <footer className={styles.footer}>
-        <a href="https://rainbow.me" rel="noopener noreferrer" target="_blank">
-          Made with ❤️ by your frens at 🌈
-        </a>
-      </footer>
     </div>
   );
 };

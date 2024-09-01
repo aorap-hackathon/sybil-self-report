@@ -100,3 +100,21 @@
     flex-direction: column;
   }
 }
+
+.modalButton {
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+  background-color: #0070f3;
+  color: #fff;
+  margin-right: 10px;
+}
+
+/* Style the button when it is disabled */
+.modalButton:disabled {
+  background-color: #cccccc; /* Light grey color */
+  color: #666666; /* Darker grey text color */
+  cursor: not-allowed; /* Change cursor to indicate the button is disabled */
+}
